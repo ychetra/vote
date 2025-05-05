@@ -1,0 +1,241 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Blockchain Voting System - Node {{port}}</title>
+  <style>
+    body { font-family: Arial, sans-serif; padding: 20px; max-width: 1200px; margin: 0 auto; }
+    input, button { margin: 5px 0; padding: 8px; width: 100%; }
+    button { background-color: #4CAF50; color: white; border: none; cursor: pointer; }
+    button:hover { opacity: 0.8; }
+    .block { border: 1px solid #ccc; margin-top: 10px; padding: 10px; border-radius: 5px; background-color: #f9f9f9; }
+    h2 { color: #333; }
+    pre { white-space: pre-wrap; }
+    .card { border: 1px solid #ddd; padding: 15px; margin: 15px 0; border-radius: 5px; }
+    .error { color: red; }
+    .chart-bar { background-color: #4CAF50; height: 30px; margin: 5px 0; }
+    .node-info { 
+      background-color: #f0f0f0; 
+      padding: 10px; 
+      border-radius: 5px; 
+      margin-bottom: 20px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    
+    .container {
+      display: flex;
+      gap: 20px;
+    }
+    
+    .left-panel {
+      flex: 1;
+    }
+    
+    .right-panel {
+      flex: 1;
+      border-left: 1px solid #ddd;
+      padding-left: 20px;
+    }
+    
+    @media (max-width: 800px) {
+      .container {
+        flex-direction: column;
+      }
+      
+      .right-panel {
+        border-left: none;
+        padding-left: 0;
+        border-top: 1px solid #ddd;
+        padding-top: 20px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="node-info">
+    <h2>🗳 Blockchain Voting System</h2>
+    <div>
+      <strong>Current Node:</strong> Port {{port}}
+      <a href="http://localhost:{{other_port}}" target="_blank" style="margin-left: 10px;">
+        Open Node {{other_port}} ↗️
+      </a>
+    </div>
+  </div>
+  
+  <div class="container">
+    <div class="left-panel">
+      <div class="card">
+        <h3>Submit Your Vote</h3>
+        <form id="voteForm">
+          <input type="text" id="voter" placeholder="Your Voter ID" required>
+          <input type="text" id="candidate" placeholder="Candidate Name" required>
+          <button type="submit">Submit Vote</button>
+        </form>
+        <div id="voteError" class="error"></div>
+      </div>
+
+      <div class="card">
+        <h3>Voting Controls</h3>
+        <div>
+          <button onclick="mineBlock()">⛏️ Mine Block</button>
+        </div>
+      </div>
+
+      <div id="voteCounts" class="card" style="display: none;">
+        <h3>Vote Counts</h3>
+        <div id="voteCountsContent"></div>
+      </div>
+    </div>
+    
+    <div class="right-panel">
+      <div class="card">
+        <h3>🧱 Blockchain</h3>
+        <div id="blockchainView"></div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    document.getElementById('voteForm').onsubmit = async (e) => {
+      e.preventDefault();
+      const voter = document.getElementById('voter').value;
+      const candidate = document.getElementById('candidate').value;
+      
+      // Reset error message
+      document.getElementById('voteError').textContent = '';
+      
+      try {
+        const res = await fetch('/vote', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ voter, candidate })
+        });
+        const data = await res.json();
+        
+        if (res.ok) {
+          alert(data.message);
+          getVoteCounts();
+          loadBlockchain();
+        } else {
+          document.getElementById('voteError').textContent = data.message;
+        }
+      } catch (error) {
+        document.getElementById('voteError').textContent = 'Error submitting vote';
+        console.error(error);
+      }
+    };
+
+    async function mineBlock() {
+      try {
+        const res = await fetch('/mine');
+        const data = await res.json();
+        alert(data.message);
+        getVoteCounts();
+        loadBlockchain();
+      } catch (error) {
+        alert('Error mining block');
+        console.error(error);
+      }
+    }
+
+    async function getVoteCounts() {
+      try {
+        const res = await fetch('/votes/count');
+        const data = await res.json();
+        const container = document.getElementById('voteCounts');
+        const content = document.getElementById('voteCountsContent');
+        
+        container.style.display = 'block';
+        
+        if (Object.keys(data.vote_counts).length === 0) {
+          content.innerHTML = '<p>No votes have been cast yet.</p>';
+          return;
+        }
+        
+        let html = `<p>Total Votes: ${data.total_votes}</p><div>`;
+        
+        // Find the maximum vote count for calculating percentages
+        const maxVotes = Math.max(...Object.values(data.vote_counts));
+        
+        // Sort candidates by vote count (descending)
+        const sortedCandidates = Object.keys(data.vote_counts).sort(
+          (a, b) => data.vote_counts[b] - data.vote_counts[a]
+        );
+        
+        for (const candidate of sortedCandidates) {
+          const votes = data.vote_counts[candidate];
+          const percentage = (votes / data.total_votes * 100).toFixed(1);
+          const width = (votes / maxVotes * 100).toFixed(1);
+          
+          html += `
+            <div style="margin-bottom: 15px;">
+              <div><strong>${candidate}</strong>: ${votes} votes (${percentage}%)</div>
+              <div class="chart-bar" style="width: ${width}%"></div>
+            </div>
+          `;
+        }
+        
+        content.innerHTML = html + '</div>';
+      } catch (error) {
+        console.error('Error getting vote counts:', error);
+      }
+    }
+    
+    async function loadBlockchain() {
+      try {
+        const res = await fetch('/chain');
+        const data = await res.json();
+        const blockchainView = document.getElementById('blockchainView');
+        
+        if (data.chain.length === 0) {
+          blockchainView.innerHTML = '<p>No blocks in the blockchain yet.</p>';
+          return;
+        }
+        
+        let html = '';
+        
+        // Display blocks in reverse order (newest first)
+        for (let i = data.chain.length - 1; i >= 0; i--) {
+          const block = data.chain[i];
+          const isGenesis = i === 0;
+          
+          html += `
+            <div class="block">
+              <h4>Block #${block.index}</h4>
+              <div><strong>Time:</strong> ${new Date(block.timestamp * 1000).toLocaleString()}</div>
+              <div><strong>Hash:</strong> ${block.previous_hash.substring(0, 15)}...</div>
+              <div><strong>Proof:</strong> ${block.proof}</div>
+              ${isGenesis 
+                ? '<div><em>Genesis Block</em></div>' 
+                : `<div><strong>Votes:</strong> ${block.votes.length}</div>`
+              }
+              ${block.votes.length > 0 
+                ? `<details>
+                    <summary>View Votes</summary>
+                    <pre>${JSON.stringify(block.votes, null, 2)}</pre>
+                  </details>` 
+                : ''
+              }
+            </div>
+          `;
+        }
+        
+        blockchainView.innerHTML = html;
+      } catch (error) {
+        console.error('Error loading blockchain:', error);
+      }
+    }
+    
+    // Initialize the page
+    getVoteCounts();
+    loadBlockchain();
+    
+    // Auto-refresh every 5 seconds to keep nodes in sync
+    setInterval(() => {
+      getVoteCounts();
+      loadBlockchain();
+    }, 5000);
+  </script>
+</body>
+</html> 
